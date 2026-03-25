@@ -3,6 +3,12 @@ title: "Introduction"
 description: "Generate AI-powered character animation videos with the Viggle API"
 ---
 
+**Using Cursor, Claude Code, or another AI assistant?** Feed it the full API context:
+
+```
+https://docs.viggle.ai/llms.txt
+```
+
 ## Welcome to Viggle API
 
 Generate AI-powered character animation videos. Upload a reference image and a driving video, then render videos with two modes: progressive chunk delivery for real-time playback, or batch processing for complete video download.
@@ -36,205 +42,9 @@ Generate your first AI animation video in 5 steps:
 3. **Create Scene** - Upload a driving video via `POST /api/scenes/preprocess`, or [import a template](/guides/import-templates) from viggle.ai
 4. **Render** - Submit the character ID + scene ID via `POST /api/render`
 5. **Download** - Get your video from `/api/render/{job_id}/download`
+6. **Pricing** - Each render costs 1 credit/second of video. Characters cost 1 credit to create. Scene creation is free. See [Pricing](/pricing) for details.
 
-### Complete Example
-
-Copy and run this script. Replace `YOUR_API_KEY` with your actual key.
-
-<CodeGroup>
-
-```python Python
-import requests
-import time
-
-API_KEY = "YOUR_API_KEY"
-BASE = "https://apis.viggle.ai"
-headers = {"Authorization": f"Bearer {API_KEY}"}
-
-# Step 1: Create Character
-print("1. Creating character...")
-resp = requests.post(
-    f"{BASE}/api/characters/preprocess",
-    headers=headers,
-    files={"image": open("character.png", "rb")},
-    data={"name": "My Character"}
-)
-character = resp.json()
-character_id = character["id"]
-print(f"   Character ID: {character_id}")
-
-# Poll until ready
-while True:
-    status = requests.get(
-        f"{BASE}/api/characters/{character_id}",
-        headers=headers
-    ).json()
-    print(f"   Status: {status['status']}")
-    if status["status"] == "ready":
-        break
-    elif status["status"] == "failed":
-        raise Exception(f"Character failed: {status.get('error_message')}")
-    time.sleep(5)
-
-# Step 2: Create Scene
-print("2. Creating scene...")
-resp = requests.post(
-    f"{BASE}/api/scenes/preprocess",
-    headers=headers,
-    files={"video": open("dance.mp4", "rb")},
-    data={"name": "Dance Sequence"}
-)
-scene = resp.json()
-scene_id = scene["id"]
-print(f"   Scene ID: {scene_id}")
-
-# Poll until ready
-while True:
-    status = requests.get(
-        f"{BASE}/api/scenes/{scene_id}",
-        headers=headers
-    ).json()
-    print(f"   Status: {status['status']}")
-    if status["status"] == "ready":
-        break
-    elif status["status"] == "failed":
-        raise Exception(f"Scene failed: {status.get('error_message')}")
-    time.sleep(5)
-
-# Step 3: Start Render
-print("3. Starting render...")
-resp = requests.post(
-    f"{BASE}/api/render",
-    headers=headers,
-    data={
-        "character_id": character_id,
-        "scene_id": scene_id
-    }
-)
-job_id = resp.json()["job_id"]
-print(f"   Job ID: {job_id}")
-
-# Step 4: Poll status until complete
-print("4. Waiting for render...")
-while True:
-    status = requests.get(f"{BASE}/api/render/{job_id}").json()
-    progress = status.get("progress", {})
-    completed = progress.get("completed_chunks", 0)
-    total = progress.get("total_chunks", 0)
-    print(f"   Status: {status['status']} ({completed}/{total})")
-
-    if status["status"] == "complete":
-        print(f"   Video ready: {status['cdn_url']}")
-        break
-    elif status["status"] == "failed":
-        raise Exception(status.get("error", "Render failed"))
-
-    time.sleep(5)
-
-# Step 5: Download
-print("5. Downloading video...")
-video = requests.get(
-    f"{BASE}/api/render/{job_id}/download",
-    headers=headers,
-    allow_redirects=True
-)
-with open("output.mp4", "wb") as f:
-    f.write(video.content)
-print("Done! Saved to output.mp4")
-```
-
-
-```javascript JavaScript
-const fs = require('fs');
-
-const API_KEY = "YOUR_API_KEY";
-const BASE = "https://apis.viggle.ai";
-const headers = { "Authorization": `Bearer ${API_KEY}` };
-
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-async function main() {
-  // Step 1: Create Character
-  console.log("1. Creating character...");
-  const charForm = new FormData();
-  charForm.append("name", "My Character");
-  charForm.append("image", fs.createReadStream("character.png"));
-
-  let resp = await fetch(`${BASE}/api/characters/preprocess`, {
-    method: "POST", headers, body: charForm
-  }).then(r => r.json());
-  const characterId = resp.id;
-  console.log(`   Character ID: ${characterId}`);
-
-  // Poll until ready
-  while (true) {
-    const status = await fetch(`${BASE}/api/characters/${characterId}`, { headers }).then(r => r.json());
-    console.log(`   Status: ${status.status}`);
-    if (status.status === "ready") break;
-    if (status.status === "failed") throw new Error(status.error_message);
-    await sleep(5000);
-  }
-
-  // Step 2: Create Scene
-  console.log("2. Creating scene...");
-  const sceneForm = new FormData();
-  sceneForm.append("name", "Dance Sequence");
-  sceneForm.append("video", fs.createReadStream("dance.mp4"));
-
-  resp = await fetch(`${BASE}/api/scenes/preprocess`, {
-    method: "POST", headers, body: sceneForm
-  }).then(r => r.json());
-  const sceneId = resp.id;
-  console.log(`   Scene ID: ${sceneId}`);
-
-  // Poll until ready
-  while (true) {
-    const status = await fetch(`${BASE}/api/scenes/${sceneId}`, { headers }).then(r => r.json());
-    console.log(`   Status: ${status.status}`);
-    if (status.status === "ready") break;
-    if (status.status === "failed") throw new Error(status.error_message);
-    await sleep(5000);
-  }
-
-  // Step 3: Start Render
-  console.log("3. Starting render...");
-  const renderForm = new URLSearchParams();
-  renderForm.append("character_id", characterId);
-  renderForm.append("scene_id", sceneId);
-
-  resp = await fetch(`${BASE}/api/render`, {
-    method: "POST", headers, body: renderForm
-  }).then(r => r.json());
-  const jobId = resp.job_id;
-  console.log(`   Job ID: ${jobId}`);
-
-  // Step 4: Poll status
-  console.log("4. Waiting for render...");
-  while (true) {
-    const status = await fetch(`${BASE}/api/render/${jobId}`).then(r => r.json());
-    const completed = status.progress?.completed_chunks ?? 0;
-    const total = status.progress?.total_chunks ?? 0;
-    console.log(`   Status: ${status.status} (${completed}/${total})`);
-
-    if (status.status === "complete") {
-      console.log(`   Video ready: ${status.cdn_url}`);
-      break;
-    }
-    if (status.status === "failed") throw new Error(status.error || "Render failed");
-    await sleep(5000);
-  }
-
-  // Step 5: Download
-  console.log("5. Downloading video...");
-  const video = await fetch(`${BASE}/api/render/${jobId}/download`, { headers });
-  fs.writeFileSync("output.mp4", Buffer.from(await video.arrayBuffer()));
-  console.log("Done! Saved to output.mp4");
-}
-
-main().catch(console.error);
-```
-
-</CodeGroup>
+For a complete walkthrough with copy-paste code examples in Python, JavaScript, and cURL, see the [Quickstart Guide](/guides/quickstart).
 
 ## Core Concepts
 
@@ -290,16 +100,6 @@ Use the **Status endpoint** (no auth required) to check progress and download th
     Render multiple videos concurrently
   </Card>
 </CardGroup>
-
-## For LLMs
-
-Build AI-powered integrations using our machine-readable documentation:
-
-```
-https://docs.viggle.ai/llms.txt
-```
-
-Point your LLM or AI coding assistant to this URL to give it full context on the Viggle API — endpoints, parameters, authentication, and usage examples.
 
 ## Need Help?
 
